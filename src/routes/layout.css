@@ -1,0 +1,64 @@
+@import 'tailwindcss';
+
+@theme {
+	/* Sidebar — deep navy, mirrored from the Paper admin design */
+	--color-nav: #12142e;
+	--color-nav-elevated: #1b1e42;
+	--color-nav-ink: #c7c9e0;
+	--color-nav-ink-soft: #7d80a8;
+
+	/* Content surfaces */
+	--color-canvas: #f5f6fa;
+	--color-surface: #ffffff;
+	--color-field: #f4f5fa;
+	--color-line: #e6e8f0;
+
+	/* Brand */
+	--color-primary: #2947c4;
+	--color-primary-deep: #1b3a8a;
+	--color-primary-light: #5b7cfa;
+	--color-elite: #7c5cfc;
+	--color-gold: #d19b0c;
+
+	/* Entry tiers */
+	--color-tier-starter: #0d9488;
+	--color-tier-classic: #b45309;
+	--color-tier-premium: #b7860a;
+
+	/* Semantic */
+	--color-success: #15803d;
+	--color-success-bg: #dcfce7;
+	--color-error: #b91c1c;
+	--color-error-bg: #fee2e2;
+	--color-warning: #b45309;
+	--color-warning-bg: #fef3c7;
+	--color-info: #1d4ed8;
+	--color-info-bg: #dbeafe;
+
+	/* Text */
+	--color-ink: #12142e;
+	--color-ink-soft: #676b8f;
+	--color-ink-faint: #9a9dc0;
+
+	--font-sans: 'Manrope', ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+	--radius-card: 16px;
+	--radius-sheet: 20px;
+}
+
+body {
+	background-color: var(--color-canvas);
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+}
+
+* {
+	border-color: var(--color-line);
+}
+
+/* Tailwind's Preflight resets buttons to cursor: default — every clickable button and
+   custom [role="button"] element in this app is meant to look clickable. */
+button:not(:disabled),
+[role='button']:not(:disabled) {
+	cursor: pointer;
+}
