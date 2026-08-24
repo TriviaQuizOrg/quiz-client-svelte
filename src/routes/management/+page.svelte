@@ -577,7 +577,14 @@
 				tiersByEvent = {
 					...tiersByEvent,
 					[eventId]: (tiersByEvent[eventId] ?? []).map((t) =>
-						t.id === updated.id ? { ...updated, entriesCount: t.entriesCount } : t
+						t.id === updated.id
+							? {
+									...updated,
+									entriesCount: t.entriesCount,
+									entryFees: t.entryFees,
+									prizesPaid: t.prizesPaid
+								}
+							: t
 					)
 				};
 			} else {
@@ -2058,12 +2065,8 @@
 						value={overview ? formatINR(overview.walletLiability) : '—'}
 					/>
 					<StatCard
-						label="Pending payouts"
-						value={pendingWithdrawals.length.toString()}
-						hint={pendingWithdrawals.length
-							? `${formatINR(pendingWithdrawalAmount)} awaiting review`
-							: undefined}
-						hintColor="var(--color-warning)"
+						label="Platform earnings (all-time)"
+						value={overview ? formatINR(overview.platformEarningsAllTime) : '—'}
 					/>
 				</div>
 
@@ -2113,6 +2116,12 @@
 								<span class="text-sm text-ink-soft">Withdrawals paid</span>
 								<span class="text-sm font-semibold text-ink tabular-nums"
 									>{overview ? formatINR(overview.withdrawalsPaidToday) : '—'}</span
+								>
+							</div>
+							<div class="flex items-center justify-between border-t border-line pt-3">
+								<span class="text-sm text-ink-soft">Platform earned today</span>
+								<span class="text-sm font-semibold text-ink tabular-nums"
+									>{overview ? formatINR(overview.platformEarningsToday) : '—'}</span
 								>
 							</div>
 						</div>
@@ -2284,6 +2293,7 @@
 														<th class="px-3 py-2 font-medium">Prize split</th>
 														<th class="px-3 py-2 font-medium">Max players</th>
 														<th class="px-3 py-2 font-medium">Entrants</th>
+														<th class="px-3 py-2 font-medium">Earnings</th>
 														<th class="px-3 py-2 font-medium"></th>
 													</tr>
 												</thead>
@@ -2304,6 +2314,9 @@
 															<td class="px-3 py-2 text-ink-soft tabular-nums"
 																>{tier.entriesCount.toLocaleString()}</td
 															>
+															<td class="px-3 py-2 font-medium text-ink tabular-nums">
+																{formatINR(tier.entryFees - tier.prizesPaid)}
+															</td>
 															<td class="px-3 py-2 text-right">
 																{#if editable}
 																	<button

@@ -49,7 +49,9 @@ function mapTier(raw: ApiTier): Tier {
 		entryFee: paiseToRupees(raw.entry_fee_paise),
 		prizeSplit: raw.prize_split_json,
 		maxPlayers: unwrapMaxPlayers(raw.max_players),
-		entriesCount: raw.entries_count
+		entriesCount: raw.entries_count,
+		entryFees: paiseToRupees(raw.entry_fees_paise),
+		prizesPaid: paiseToRupees(raw.prizes_paid_paise)
 	};
 }
 
@@ -143,9 +145,9 @@ export async function createTier(gameEventId: string, input: TierInput): Promise
 		prize_split_json: input.prizeSplit,
 		max_players: input.maxPlayers
 	});
-	// CreateTier :one returns raw tier columns without entries_count — a brand new tier
-	// always has zero entries, so default it rather than re-fetching the list.
-	return { ...mapTier(raw), entriesCount: 0 };
+	// CreateTier :one returns raw tier columns without the stats columns — a brand new
+	// tier always has zero entries/fees/prizes, so default them rather than re-fetching.
+	return { ...mapTier(raw), entriesCount: 0, entryFees: 0, prizesPaid: 0 };
 }
 
 export async function updateTier(tierId: string, input: TierInput): Promise<Tier> {
