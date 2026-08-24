@@ -11,7 +11,9 @@ export async function fetchDashboardOverview(): Promise<DashboardOverview> {
 		todaysGameEvents: (raw.todays_game_events ?? []).map(mapGameEvent),
 		entryFeesToday: paiseToRupees(raw.entry_fees_collected_today_paise),
 		prizesPaidToday: paiseToRupees(raw.prizes_paid_today_paise),
-		withdrawalsPaidToday: paiseToRupees(raw.withdrawals_paid_today_paise)
+		withdrawalsPaidToday: paiseToRupees(raw.withdrawals_paid_today_paise),
+		platformEarningsToday: paiseToRupees(raw.platform_earnings_today_paise),
+		platformEarningsAllTime: paiseToRupees(raw.platform_earnings_all_time_paise)
 	};
 }
 

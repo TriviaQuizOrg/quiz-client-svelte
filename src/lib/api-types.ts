@@ -60,6 +60,8 @@ export interface ApiTier {
 	max_players: GoNullInt | null;
 	created_at: string;
 	entries_count: number; // present on ListTiersByGameEventWithStats rows only
+	entry_fees_paise: number; // present on ListTiersByGameEventWithStats rows only
+	prizes_paid_paise: number; // present on ListTiersByGameEventWithStats rows only
 }
 
 export type ApiSessionType = 'elite' | 'standard';
@@ -128,6 +130,8 @@ export interface ApiOverview {
 	entry_fees_collected_today_paise: number;
 	prizes_paid_today_paise: number;
 	withdrawals_paid_today_paise: number;
+	platform_earnings_today_paise: number;
+	platform_earnings_all_time_paise: number;
 }
 
 export interface ApiNotification {

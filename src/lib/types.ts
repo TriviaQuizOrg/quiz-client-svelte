@@ -40,6 +40,10 @@ export interface Tier {
 	prizeSplit: Record<string, number>; // percentages, sums to 100
 	maxPlayers: number | null;
 	entriesCount: number;
+	// No dedicated commission ledger entry exists — platform earnings on this tier is
+	// entryFees - prizesPaid, derived here rather than sent as its own field.
+	entryFees: number; // rupees, collected from joins so far
+	prizesPaid: number; // rupees, paid out by settlement so far (0 until settled)
 }
 
 export type SessionType = 'elite' | 'standard';
@@ -183,6 +187,10 @@ export interface DashboardOverview {
 	entryFeesToday: number; // rupees
 	prizesPaidToday: number; // rupees
 	withdrawalsPaidToday: number; // rupees
+	// Neither figure has a dedicated ledger entry on the backend — both are derived as
+	// entry fees collected minus prizes paid (see reports.Overview).
+	platformEarningsToday: number; // rupees
+	platformEarningsAllTime: number; // rupees
 }
 
 // Matches admin_role exactly (00014_admin_users.sql).
