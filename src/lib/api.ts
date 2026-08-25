@@ -134,3 +134,33 @@ export async function downloadFile(path: string, filename: string): Promise<void
 export function paiseToRupees(paise: number): number {
 	return Math.round(paise) / 100;
 }
+
+// --- pagination ---
+// The wire shape every paginated admin list endpoint returns (see pagedResponse in
+// quiz-server's internal/server/pagination.go).
+export interface ApiPaged<T> {
+	items: T[];
+	total: number;
+	page: number;
+	page_size: number;
+}
+
+export interface Paged<T> {
+	items: T[];
+	total: number;
+	page: number;
+	pageSize: number;
+	totalPages: number;
+}
+
+export function mapPaged<T, U>(raw: ApiPaged<T>, mapItem: (t: T) => U): Paged<U> {
+	return {
+		// Go marshals a nil slice as JSON null, not [] — see the recurring "Cannot read
+		// properties of null" bug class elsewhere in this codebase.
+		items: (raw.items ?? []).map(mapItem),
+		total: raw.total,
+		page: raw.page,
+		pageSize: raw.page_size,
+		totalPages: Math.max(1, Math.ceil(raw.total / raw.page_size))
+	};
+}

@@ -1,5 +1,13 @@
-import { api, unwrapStr, unwrapTime, paiseToRupees } from '$lib/api';
-import type { ApiWithdrawal } from '$lib/api-types';
+import {
+	api,
+	unwrapStr,
+	unwrapTime,
+	paiseToRupees,
+	mapPaged,
+	type ApiPaged,
+	type Paged
+} from '$lib/api';
+import type { ApiWithdrawal, ApiWithdrawalStatus } from '$lib/api-types';
 import type { Withdrawal } from '$lib/types';
 
 function mapWithdrawal(w: ApiWithdrawal): Withdrawal {
@@ -19,9 +27,35 @@ function mapWithdrawal(w: ApiWithdrawal): Withdrawal {
 	};
 }
 
-export async function fetchWithdrawals(): Promise<Withdrawal[]> {
-	const rows = await api.get<ApiWithdrawal[]>('/admin/withdrawals');
-	return (rows ?? []).map(mapWithdrawal);
+export async function fetchWithdrawals(
+	page: number,
+	status = '',
+	q = ''
+): Promise<Paged<Withdrawal>> {
+	const params = new URLSearchParams({ page: String(page) });
+	if (status) params.set('status', status);
+	if (q.trim()) params.set('q', q.trim());
+	const raw = await api.get<ApiPaged<ApiWithdrawal>>(`/admin/withdrawals?${params}`);
+	return mapPaged(raw, mapWithdrawal);
+}
+
+export interface WithdrawalStats {
+	status: ApiWithdrawalStatus;
+	count: number;
+	amount: number; // rupees
+}
+
+// Platform-wide per-status counts/amounts, independent of whichever page of the list is
+// loaded — backs the Payouts page's stat cards and status donut.
+export async function fetchWithdrawalStats(): Promise<WithdrawalStats[]> {
+	const rows = await api.get<
+		{ status: ApiWithdrawalStatus; count: number; amount_paise: number }[]
+	>('/admin/withdrawals/stats');
+	return (rows ?? []).map((r) => ({
+		status: r.status,
+		count: r.count,
+		amount: paiseToRupees(r.amount_paise)
+	}));
 }
 
 export async function approveWithdrawal(id: string): Promise<Withdrawal> {

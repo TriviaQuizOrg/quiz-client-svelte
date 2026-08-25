@@ -1,4 +1,4 @@
-import { api, unwrapStr, unwrapTime } from '$lib/api';
+import { api, unwrapStr, unwrapTime, mapPaged, type ApiPaged, type Paged } from '$lib/api';
 import type { ApiKycDocument } from '$lib/api-types';
 import type { KycDocument } from '$lib/types';
 
@@ -19,9 +19,11 @@ function mapDoc(d: ApiKycDocument): KycDocument {
 	};
 }
 
-export async function fetchKycDocuments(): Promise<KycDocument[]> {
-	const rows = await api.get<ApiKycDocument[]>('/admin/kyc');
-	return (rows ?? []).map(mapDoc);
+export async function fetchKycDocuments(page: number, status = ''): Promise<Paged<KycDocument>> {
+	const params = new URLSearchParams({ page: String(page) });
+	if (status) params.set('status', status);
+	const raw = await api.get<ApiPaged<ApiKycDocument>>(`/admin/kyc?${params}`);
+	return mapPaged(raw, mapDoc);
 }
 
 export async function verifyKycDocument(id: string): Promise<KycDocument> {

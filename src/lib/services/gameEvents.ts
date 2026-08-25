@@ -81,8 +81,13 @@ function mapSessionResult(raw: ApiSessionResult): SessionResult {
 	};
 }
 
+// Deliberately unpaginated (/all, not the paginated /admin/game-events) — this page's
+// phase filter/date search and its "top contests"/"entry fees locked"/"live" stats all
+// need the complete list, and admin-created event volume here is small (a handful a day
+// at most), so a real paginated table wouldn't pull its weight here the way it does on
+// the higher-volume Players/Tickets/Disputes/KYC/Payouts pages.
 export async function fetchGameEvents(): Promise<GameEvent[]> {
-	const raw = await api.get<ApiGameEvent[]>('/admin/game-events');
+	const raw = await api.get<ApiGameEvent[]>('/admin/game-events/all');
 	return (raw ?? []).map(mapGameEvent);
 }
 

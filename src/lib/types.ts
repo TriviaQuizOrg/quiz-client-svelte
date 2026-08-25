@@ -281,6 +281,8 @@ export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
 export interface SupportTicket {
 	id: string;
 	userId: string;
+	playerName: string; // full_name if set, otherwise falls back to the phone number
+	playerPhone: string;
 	disputeId: string | null;
 	category: TicketCategory;
 	subject: string;
@@ -324,6 +326,8 @@ export const DISPUTE_STATUS_INFO: Record<
 export interface DisputeItem {
 	id: string;
 	userId: string;
+	playerName: string; // '' when unavailable (see mapDispute) — falls back to a client lookup
+	playerPhone: string;
 	entryId: string | null;
 	questionId: string | null;
 	description: string;

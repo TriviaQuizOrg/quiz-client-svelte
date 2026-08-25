@@ -1,11 +1,23 @@
-import { api, unwrapStr, unwrapTime, unwrapInt, unwrapBool } from '$lib/api';
+import {
+	api,
+	unwrapStr,
+	unwrapTime,
+	unwrapInt,
+	unwrapBool,
+	mapPaged,
+	type ApiPaged,
+	type Paged
+} from '$lib/api';
 import type { ApiDispute, ApiDisputeEvidence } from '$lib/api-types';
 import type { DisputeItem, DisputeEvidence } from '$lib/types';
 
 function mapDispute(d: ApiDispute): DisputeItem {
+	const fullName = d.user_full_name ? unwrapStr(d.user_full_name) : null;
 	return {
 		id: d.id,
 		userId: d.user_id,
+		playerName: fullName || d.user_phone_number || '',
+		playerPhone: d.user_phone_number ?? '',
 		entryId: d.entry_id,
 		questionId: d.question_id,
 		description: d.description,
@@ -52,9 +64,11 @@ function mapEvidence(raw: ApiDisputeEvidence): DisputeEvidence {
 	};
 }
 
-export async function fetchDisputes(): Promise<DisputeItem[]> {
-	const rows = await api.get<ApiDispute[]>('/admin/disputes');
-	return (rows ?? []).map(mapDispute);
+export async function fetchDisputes(page: number, status = ''): Promise<Paged<DisputeItem>> {
+	const params = new URLSearchParams({ page: String(page) });
+	if (status) params.set('status', status);
+	const raw = await api.get<ApiPaged<ApiDispute>>(`/admin/disputes?${params}`);
+	return mapPaged(raw, mapDispute);
 }
 
 export async function fetchDisputeEvidence(id: string): Promise<DisputeEvidence> {

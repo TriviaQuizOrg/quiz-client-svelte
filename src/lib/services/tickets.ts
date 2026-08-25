@@ -1,11 +1,14 @@
-import { api, unwrapStr, unwrapTime } from '$lib/api';
+import { api, unwrapStr, unwrapTime, mapPaged, type ApiPaged, type Paged } from '$lib/api';
 import type { ApiSupportTicket, ApiSupportMessage, ApiTicketDetail } from '$lib/api-types';
 import type { SupportTicket, TicketMessage } from '$lib/types';
 
 function mapTicket(t: ApiSupportTicket): SupportTicket {
+	const fullName = t.user_full_name ? unwrapStr(t.user_full_name) : null;
 	return {
 		id: t.id,
 		userId: t.user_id,
+		playerName: fullName || t.user_phone_number || '',
+		playerPhone: t.user_phone_number ?? '',
 		disputeId: t.dispute_id,
 		category: t.category,
 		subject: t.subject,
@@ -31,9 +34,16 @@ function mapMessage(m: ApiSupportMessage): TicketMessage {
 	};
 }
 
-export async function fetchTickets(): Promise<SupportTicket[]> {
-	const rows = await api.get<ApiSupportTicket[]>('/admin/tickets');
-	return (rows ?? []).map(mapTicket);
+export async function fetchTickets(
+	page: number,
+	status = '',
+	q = ''
+): Promise<Paged<SupportTicket>> {
+	const params = new URLSearchParams({ page: String(page) });
+	if (status) params.set('status', status);
+	if (q.trim()) params.set('q', q.trim());
+	const raw = await api.get<ApiPaged<ApiSupportTicket>>(`/admin/tickets?${params}`);
+	return mapPaged(raw, mapTicket);
 }
 
 export interface TicketDetail {

@@ -197,6 +197,10 @@ export type ApiTicketSenderType = 'user' | 'admin' | 'system';
 export interface ApiSupportTicket {
 	id: string;
 	user_id: string;
+	// Only present on the paginated list (ListSupportTicketsFiltered joins users) — the
+	// single-ticket detail fetch doesn't carry these, see mapTicket's fallback.
+	user_full_name?: GoNullString;
+	user_phone_number?: string;
 	dispute_id: string | null;
 	category: ApiTicketCategory;
 	subject: string;
@@ -232,6 +236,10 @@ export type ApiDisputeStatus = 'open' | 'investigating' | 'resolved' | 'rejected
 export interface ApiDispute {
 	id: string;
 	user_id: string;
+	// Only present on the paginated list (ListDisputesPaged/ByStatusPaged join users) —
+	// the evidence/detail fetch doesn't carry these, see mapDispute's fallback.
+	user_full_name?: GoNullString;
+	user_phone_number?: string;
 	entry_id: string | null;
 	question_id: string | null;
 	description: string;

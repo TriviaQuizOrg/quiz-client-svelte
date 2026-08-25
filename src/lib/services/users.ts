@@ -1,4 +1,4 @@
-import { api, unwrapStr, paiseToRupees } from '$lib/api';
+import { api, unwrapStr, paiseToRupees, mapPaged, type ApiPaged, type Paged } from '$lib/api';
 import type { ApiUser, ApiWalletTransaction } from '$lib/api-types';
 import type { AdminManagedUser, WalletTransaction } from '$lib/types';
 import { formatDateLabel, formatMonthYear } from '$lib/format';
@@ -17,9 +17,11 @@ function mapUser(u: ApiUser): AdminManagedUser {
 	};
 }
 
-export async function fetchUsers(): Promise<AdminManagedUser[]> {
-	const rows = await api.get<ApiUser[]>('/admin/users');
-	return (rows ?? []).map(mapUser);
+export async function fetchUsers(page: number, q = ''): Promise<Paged<AdminManagedUser>> {
+	const params = new URLSearchParams({ page: String(page) });
+	if (q.trim()) params.set('q', q.trim());
+	const raw = await api.get<ApiPaged<ApiUser>>(`/admin/users?${params}`);
+	return mapPaged(raw, mapUser);
 }
 
 export async function blockUser(id: string, reason: string): Promise<AdminManagedUser> {

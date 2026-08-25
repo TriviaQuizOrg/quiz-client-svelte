@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { auth } from '$lib/stores/auth.svelte';
+	import type { Paged } from '$lib/api';
 	import { fetchUsers, blockUser, unblockUser, fetchUserTransactions } from '$lib/services/users';
 	import {
 		fetchGameEvents,
@@ -25,10 +26,12 @@
 	} from '$lib/services/questions';
 	import {
 		fetchWithdrawals,
+		fetchWithdrawalStats,
 		approveWithdrawal,
 		rejectWithdrawal,
 		markWithdrawalProcessed,
-		markWithdrawalFailed
+		markWithdrawalFailed,
+		type WithdrawalStats
 	} from '$lib/services/withdrawals';
 	import { fetchDashboardOverview, fetchAdminMe } from '$lib/services/dashboard';
 	import {
@@ -114,6 +117,9 @@
 	import PillTabs from '$lib/components/PillTabs.svelte';
 	import DonutChart from '$lib/components/DonutChart.svelte';
 	import NavIcon from '$lib/components/NavIcon.svelte';
+	import Pagination from '$lib/components/Pagination.svelte';
+	import * as Select from '$lib/components/ui/select/index.js';
+	import DatePicker from '$lib/components/date-picker.svelte';
 
 	type Section =
 		| 'dashboard'
@@ -199,6 +205,7 @@
 		if (checkedAuth && canSeePayouts && !withdrawalsLoaded) {
 			withdrawalsLoaded = true;
 			loadWithdrawals();
+			loadWithdrawalStats();
 		}
 	});
 
@@ -372,28 +379,28 @@
 	// ---------- Add game event ----------
 	let showAddGameEvent = $state(false);
 	let newContestName = $state('');
-	let newEventDate = $state('');
-	let newEntryOpensAt = $state('');
-	let newEntryClosesAt = $state('');
-	let newGameStartsAt = $state('');
-	let newGameEndsAt = $state('');
+	let newEventDate = $state<Date | undefined>(undefined);
+	let newEntryOpensAt = $state<Date | undefined>(undefined);
+	let newEntryClosesAt = $state<Date | undefined>(undefined);
+	let newGameStartsAt = $state<Date | undefined>(undefined);
+	let newGameEndsAt = $state<Date | undefined>(undefined);
 	let addGameEventError = $state('');
 	let addGameEventSaving = $state(false);
 
 	function openAddGameEvent() {
 		newContestName = '';
-		newEventDate = '';
-		newEntryOpensAt = '';
-		newEntryClosesAt = '';
-		newGameStartsAt = '';
-		newGameEndsAt = '';
+		newEventDate = undefined;
+		newEntryOpensAt = undefined;
+		newEntryClosesAt = undefined;
+		newGameStartsAt = undefined;
+		newGameEndsAt = undefined;
 		addGameEventError = '';
 		showAddGameEvent = true;
 	}
 
-	// datetime-local inputs have no timezone — treated as the admin's local time.
-	function toRfc3339(localDateTime: string): string {
-		return new Date(localDateTime).toISOString();
+	function toDateOnly(date: Date): string {
+		const pad = (n: number) => String(n).padStart(2, '0');
+		return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 	}
 
 	async function submitAddGameEvent(e: SubmitEvent) {
@@ -412,12 +419,12 @@
 		try {
 			const window: GameEventWindowInput = {
 				name: newContestName.trim(),
-				entryOpensAt: toRfc3339(newEntryOpensAt),
-				entryClosesAt: toRfc3339(newEntryClosesAt),
-				gameStartsAt: toRfc3339(newGameStartsAt),
-				gameEndsAt: toRfc3339(newGameEndsAt)
+				entryOpensAt: newEntryOpensAt.toISOString(),
+				entryClosesAt: newEntryClosesAt.toISOString(),
+				gameStartsAt: newGameStartsAt.toISOString(),
+				gameEndsAt: newGameEndsAt.toISOString()
 			};
-			const created = await createGameEvent(newEventDate, window);
+			const created = await createGameEvent(toDateOnly(newEventDate), window);
 			gameEvents = [created, ...gameEvents];
 			tiersByEvent = { ...tiersByEvent, [created.id]: [] };
 			showAddGameEvent = false;
@@ -431,42 +438,48 @@
 	// ---------- Edit game event window ----------
 	let editingEventId = $state<string | null>(null);
 	let editContestName = $state('');
-	let editEntryOpensAt = $state('');
-	let editEntryClosesAt = $state('');
-	let editGameStartsAt = $state('');
-	let editGameEndsAt = $state('');
+	let editEntryOpensAt = $state<Date | undefined>(undefined);
+	let editEntryClosesAt = $state<Date | undefined>(undefined);
+	let editGameStartsAt = $state<Date | undefined>(undefined);
+	let editGameEndsAt = $state<Date | undefined>(undefined);
 	let editEventError = $state('');
 	let editEventSaving = $state(false);
 
-	function toLocalInputValue(iso: string): string {
+	function toLocalDate(iso: string): Date | undefined {
 		const d = new Date(iso);
-		if (Number.isNaN(d.getTime())) return '';
-		const pad = (n: number) => String(n).padStart(2, '0');
-		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+		return Number.isNaN(d.getTime()) ? undefined : d;
 	}
 
 	function openEditGameEvent(event: GameEvent) {
 		editingEventId = event.id;
 		editContestName = event.name;
-		editEntryOpensAt = toLocalInputValue(event.entryOpensAt);
-		editEntryClosesAt = toLocalInputValue(event.entryClosesAt);
-		editGameStartsAt = toLocalInputValue(event.gameStartsAt);
-		editGameEndsAt = toLocalInputValue(event.gameEndsAt);
+		editEntryOpensAt = toLocalDate(event.entryOpensAt);
+		editEntryClosesAt = toLocalDate(event.entryClosesAt);
+		editGameStartsAt = toLocalDate(event.gameStartsAt);
+		editGameEndsAt = toLocalDate(event.gameEndsAt);
 		editEventError = '';
 	}
 
 	async function submitEditGameEvent(e: SubmitEvent) {
 		e.preventDefault();
-		if (!editingEventId || !editContestName.trim()) return;
+		if (
+			!editingEventId ||
+			!editContestName.trim() ||
+			!editEntryOpensAt ||
+			!editEntryClosesAt ||
+			!editGameStartsAt ||
+			!editGameEndsAt
+		)
+			return;
 		editEventSaving = true;
 		editEventError = '';
 		try {
 			const updated = await updateGameEventWindow(editingEventId, {
 				name: editContestName.trim(),
-				entryOpensAt: toRfc3339(editEntryOpensAt),
-				entryClosesAt: toRfc3339(editEntryClosesAt),
-				gameStartsAt: toRfc3339(editGameStartsAt),
-				gameEndsAt: toRfc3339(editGameEndsAt)
+				entryOpensAt: editEntryOpensAt.toISOString(),
+				entryClosesAt: editEntryClosesAt.toISOString(),
+				gameStartsAt: editGameStartsAt.toISOString(),
+				gameEndsAt: editGameEndsAt.toISOString()
 			});
 			gameEvents = gameEvents.map((ev) => (ev.id === updated.id ? updated : ev));
 			editingEventId = null;
@@ -664,6 +677,19 @@
 		}
 	}
 
+	function eventPickerLabel(eventId: string) {
+		const event = gameEvents.find((e) => e.id === eventId);
+		return event ? `${event.name} — ${formatEventDate(event.eventDate)}` : '';
+	}
+
+	function sessionPickerLabel(
+		sessions: { id: string; sessionLabel: string; entriesCount: number }[],
+		sessionId: string
+	) {
+		const session = sessions.find((s) => s.id === sessionId);
+		return session ? `${session.sessionLabel} (${session.entriesCount} players)` : '';
+	}
+
 	// ---------- Question bank (session-scoped authoring) ----------
 	// Questions belong to a single game_session — pick a contest, then a session within
 	// it, then author/view that session's questions. Reuses the same gameEvents /
@@ -744,12 +770,18 @@
 	let playersLoading = $state(false);
 	let playersError = $state('');
 	let playerQuery = $state('');
+	let playersPage = $state(1);
+	let playersTotal = $state(0);
+	let playersTotalPages = $state(1);
 
 	async function loadPlayers() {
 		playersLoading = true;
 		playersError = '';
 		try {
-			players = await fetchUsers();
+			const result = await fetchUsers(playersPage, playerQuery);
+			players = result.items;
+			playersTotal = result.total;
+			playersTotalPages = result.totalPages;
 		} catch (err) {
 			playersError = err instanceof Error ? err.message : 'Failed to load players.';
 		} finally {
@@ -757,13 +789,20 @@
 		}
 	}
 
-	const filteredPlayers = $derived(
-		players.filter(
-			(p) =>
-				p.name.toLowerCase().includes(playerQuery.trim().toLowerCase()) ||
-				p.phoneNumber.toLowerCase().includes(playerQuery.trim().toLowerCase())
-		)
-	);
+	function goToPlayersPage(page: number) {
+		playersPage = page;
+		loadPlayers();
+	}
+
+	// Debounced re-fetch on search — resets to page 1 since the result set changes.
+	let playerQueryTimer: ReturnType<typeof setTimeout> | undefined;
+	function onPlayerQueryInput() {
+		clearTimeout(playerQueryTimer);
+		playerQueryTimer = setTimeout(() => {
+			playersPage = 1;
+			loadPlayers();
+		}, 300);
+	}
 
 	let blockingPlayerId = $state<string | null>(null);
 	let blockReason = $state('');
@@ -825,6 +864,9 @@
 	let withdrawalsError = $state('');
 	let payoutQuery = $state('');
 	let payoutFilter = $state('all');
+	let payoutsPage = $state(1);
+	let payoutsTotal = $state(0);
+	let payoutsTotalPages = $state(1);
 
 	const payoutFilterOptions = [
 		{ id: 'all', label: 'All' },
@@ -840,7 +882,14 @@
 		withdrawalsLoading = true;
 		withdrawalsError = '';
 		try {
-			withdrawals = await fetchWithdrawals();
+			const result = await fetchWithdrawals(
+				payoutsPage,
+				payoutFilter === 'all' ? '' : payoutFilter,
+				payoutQuery
+			);
+			withdrawals = result.items;
+			payoutsTotal = result.total;
+			payoutsTotalPages = result.totalPages;
 		} catch (err) {
 			withdrawalsError = err instanceof Error ? err.message : 'Failed to load payouts.';
 		} finally {
@@ -848,25 +897,50 @@
 		}
 	}
 
-	const filteredWithdrawals = $derived(
-		withdrawals.filter((w) => {
-			const q = payoutQuery.trim().toLowerCase();
-			const matchesQuery = w.playerName.toLowerCase().includes(q) || w.playerPhone.includes(q);
-			const matchesFilter = payoutFilter === 'all' || w.status === payoutFilter;
-			return matchesQuery && matchesFilter;
-		})
-	);
+	function goToPayoutsPage(page: number) {
+		payoutsPage = page;
+		loadWithdrawals();
+	}
 
-	const pendingWithdrawals = $derived(withdrawals.filter((w) => w.status === 'pending'));
-	const pendingWithdrawalAmount = $derived(
-		pendingWithdrawals.reduce((sum, w) => sum + w.amount, 0)
-	);
-	const paidOutAmount = $derived(
-		withdrawals.filter((w) => w.status === 'success').reduce((sum, w) => sum + w.amount, 0)
-	);
+	function onPayoutFilterChange(status: string) {
+		payoutFilter = status;
+		payoutsPage = 1;
+		loadWithdrawals();
+	}
+
+	let payoutQueryTimer: ReturnType<typeof setTimeout> | undefined;
+	function onPayoutQueryInput() {
+		clearTimeout(payoutQueryTimer);
+		payoutQueryTimer = setTimeout(() => {
+			payoutsPage = 1;
+			loadWithdrawals();
+		}, 300);
+	}
+
+	// Platform-wide per-status counts/amounts — independent of loadWithdrawals above, so
+	// the stat cards and donut below stay accurate regardless of which page/filter is
+	// currently loaded in the table.
+	let withdrawalStats = $state<WithdrawalStats[]>([]);
+
+	async function loadWithdrawalStats() {
+		try {
+			withdrawalStats = await fetchWithdrawalStats();
+		} catch {
+			// Secondary data — a failure here shouldn't block the payouts table itself.
+		}
+	}
+
+	function withdrawalStatFor(status: WithdrawalStatus) {
+		return withdrawalStats.find((s) => s.status === status);
+	}
+
+	const pendingWithdrawalCount = $derived(withdrawalStatFor('pending')?.count ?? 0);
+	const pendingWithdrawalAmount = $derived(withdrawalStatFor('pending')?.amount ?? 0);
+	const paidOutAmount = $derived(withdrawalStatFor('success')?.amount ?? 0);
 	const failedOrRejectedCount = $derived(
-		withdrawals.filter((w) => w.status === 'failed' || w.status === 'rejected').length
+		(withdrawalStatFor('failed')?.count ?? 0) + (withdrawalStatFor('rejected')?.count ?? 0)
 	);
+	const totalWithdrawalRequests = $derived(withdrawalStats.reduce((sum, s) => sum + s.count, 0));
 
 	let withdrawalActionBusy = $state<string | null>(null);
 	let withdrawalActionError = $state<Record<string, string>>({});
@@ -877,6 +951,7 @@
 		try {
 			const updated = await approveWithdrawal(id);
 			withdrawals = withdrawals.map((w) => (w.id === updated.id ? updated : w));
+			loadWithdrawalStats();
 		} catch (err) {
 			withdrawalActionError = {
 				...withdrawalActionError,
@@ -893,6 +968,7 @@
 		try {
 			const updated = await markWithdrawalProcessed(id);
 			withdrawals = withdrawals.map((w) => (w.id === updated.id ? updated : w));
+			loadWithdrawalStats();
 		} catch (err) {
 			withdrawalActionError = {
 				...withdrawalActionError,
@@ -926,6 +1002,7 @@
 		try {
 			const updated = await rejectWithdrawal(rejectingWithdrawalId, withdrawalReasonInput.trim());
 			withdrawals = withdrawals.map((w) => (w.id === updated.id ? updated : w));
+			loadWithdrawalStats();
 			rejectingWithdrawalId = null;
 		} catch (err) {
 			withdrawalReasonError = err instanceof Error ? err.message : 'Failed to reject payout.';
@@ -938,6 +1015,7 @@
 		try {
 			const updated = await markWithdrawalFailed(failingWithdrawalId, withdrawalReasonInput.trim());
 			withdrawals = withdrawals.map((w) => (w.id === updated.id ? updated : w));
+			loadWithdrawalStats();
 			failingWithdrawalId = null;
 		} catch (err) {
 			withdrawalReasonError = err instanceof Error ? err.message : 'Failed to mark payout failed.';
@@ -961,7 +1039,9 @@
 		}
 	}
 
-	const totalPlayers = $derived(players.length);
+	// The players list is now paginated (10/page) — players.length would only ever be
+	// ≤10. playersTotal comes from the backend's own count, accurate regardless of page.
+	const totalPlayers = $derived(playersTotal);
 	const liveContests = $derived(gameEvents.filter((e) => e.phase === 'live').length);
 
 	// "Top contests by prize pool" doesn't apply pre-settlement — prize pools are only
@@ -1021,7 +1101,7 @@
 		withdrawalStatusOrder
 			.map((status) => ({
 				label: WITHDRAWAL_STATUS_INFO[status].label,
-				value: withdrawals.filter((w) => w.status === status).length,
+				value: withdrawalStatFor(status)?.count ?? 0,
 				color: WITHDRAWAL_STATUS_INFO[status].color
 			}))
 			.filter((seg) => seg.value > 0)
@@ -1257,6 +1337,9 @@
 	let ticketsError = $state('');
 	let ticketQuery = $state('');
 	let ticketFilter = $state('all');
+	let ticketsPage = $state(1);
+	let ticketsTotal = $state(0);
+	let ticketsTotalPages = $state(1);
 
 	const ticketFilterOptions = [
 		{ id: 'all', label: 'All' },
@@ -1268,30 +1351,52 @@
 		{ id: 'closed', label: 'Closed' }
 	];
 
+	// Fallback only — used where a ticket/dispute detail view lacks the joined player
+	// name (mutation responses and the single-item detail fetch don't carry it, only the
+	// paginated lists do). Since players is now itself paginated, this can miss for a
+	// player outside the currently-loaded page; callers should prefer an already-known
+	// playerName (from the list row) over this where one's available.
 	function playerNameFor(userId: string): string {
 		return players.find((p) => p.id === userId)?.name ?? 'Unknown player';
 	}
-
-	const filteredTickets = $derived(
-		tickets.filter((t) => {
-			const q = ticketQuery.trim().toLowerCase();
-			const matchesQuery =
-				t.subject.toLowerCase().includes(q) || playerNameFor(t.userId).toLowerCase().includes(q);
-			const matchesFilter = ticketFilter === 'all' || t.status === ticketFilter;
-			return matchesQuery && matchesFilter;
-		})
-	);
 
 	async function loadTickets() {
 		ticketsLoading = true;
 		ticketsError = '';
 		try {
-			tickets = await fetchTickets();
+			const result = await fetchTickets(
+				ticketsPage,
+				ticketFilter === 'all' ? '' : ticketFilter,
+				ticketQuery
+			);
+			tickets = result.items;
+			ticketsTotal = result.total;
+			ticketsTotalPages = result.totalPages;
 		} catch (err) {
 			ticketsError = err instanceof Error ? err.message : 'Failed to load tickets.';
 		} finally {
 			ticketsLoading = false;
 		}
+	}
+
+	function goToTicketsPage(page: number) {
+		ticketsPage = page;
+		loadTickets();
+	}
+
+	function onTicketFilterChange(status: string) {
+		ticketFilter = status;
+		ticketsPage = 1;
+		loadTickets();
+	}
+
+	let ticketQueryTimer: ReturnType<typeof setTimeout> | undefined;
+	function onTicketQueryInput() {
+		clearTimeout(ticketQueryTimer);
+		ticketQueryTimer = setTimeout(() => {
+			ticketsPage = 1;
+			loadTickets();
+		}, 300);
 	}
 
 	let ticketsLoaded = false;
@@ -1310,16 +1415,34 @@
 	let ticketActionBusy = $state(false);
 	let replyText = $state('');
 
+	// The single-ticket detail fetch and every mutation response (assign/reply/resolve/
+	// close) return the ticket without the players join the paginated list has — fill the
+	// name back in from whatever's already known (the currently-open modal, the loaded
+	// list row, or worst case the players-array lookup) rather than showing it blank.
+	function withKnownPlayerName(t: SupportTicket): SupportTicket {
+		if (t.playerName) return t;
+		const playerName =
+			viewingTicket?.playerName ||
+			tickets.find((x) => x.id === t.id)?.playerName ||
+			playerNameFor(t.userId);
+		const playerPhone =
+			t.playerPhone ||
+			viewingTicket?.playerPhone ||
+			tickets.find((x) => x.id === t.id)?.playerPhone ||
+			'';
+		return { ...t, playerName, playerPhone };
+	}
+
 	async function openTicket(id: string) {
 		viewingTicketId = id;
-		viewingTicket = null;
+		viewingTicket = tickets.find((t) => t.id === id) ?? null;
 		ticketMessages = [];
 		ticketActionError = '';
 		replyText = '';
 		ticketDetailLoading = true;
 		try {
 			const detail = await fetchTicketDetail(id);
-			viewingTicket = detail.ticket;
+			viewingTicket = withKnownPlayerName(detail.ticket);
 			ticketMessages = detail.messages;
 		} catch (err) {
 			ticketActionError = err instanceof Error ? err.message : 'Failed to load ticket.';
@@ -1344,7 +1467,7 @@
 			fetchTicketDetail(id)
 				.then((detail) => {
 					if (viewingTicketId !== id) return;
-					viewingTicket = detail.ticket;
+					viewingTicket = withKnownPlayerName(detail.ticket);
 					ticketMessages = detail.messages;
 				})
 				.catch(() => {});
@@ -1353,8 +1476,10 @@
 	});
 
 	function applyTicketUpdate(updated: SupportTicket) {
-		viewingTicket = updated;
-		tickets = tickets.map((t) => (t.id === updated.id ? updated : t));
+		viewingTicket = withKnownPlayerName(updated);
+		tickets = tickets.map((t) =>
+			t.id === updated.id ? { ...updated, playerName: t.playerName, playerPhone: t.playerPhone } : t
+		);
 	}
 
 	async function assignTicketAction() {
@@ -1417,6 +1542,9 @@
 	let disputesLoading = $state(false);
 	let disputesError = $state('');
 	let disputeFilter = $state('all');
+	let disputesPage = $state(1);
+	let disputesTotal = $state(0);
+	let disputesTotalPages = $state(1);
 
 	const disputeFilterOptions = [
 		{ id: 'all', label: 'All' },
@@ -1426,20 +1554,33 @@
 		{ id: 'rejected', label: 'Rejected' }
 	];
 
-	const filteredDisputes = $derived(
-		disputes.filter((d) => disputeFilter === 'all' || d.status === disputeFilter)
-	);
-
 	async function loadDisputes() {
 		disputesLoading = true;
 		disputesError = '';
 		try {
-			disputes = await fetchDisputes();
+			const result = await fetchDisputes(
+				disputesPage,
+				disputeFilter === 'all' ? '' : disputeFilter
+			);
+			disputes = result.items;
+			disputesTotal = result.total;
+			disputesTotalPages = result.totalPages;
 		} catch (err) {
 			disputesError = err instanceof Error ? err.message : 'Failed to load disputes.';
 		} finally {
 			disputesLoading = false;
 		}
+	}
+
+	function goToDisputesPage(page: number) {
+		disputesPage = page;
+		loadDisputes();
+	}
+
+	function onDisputeFilterChange(status: string) {
+		disputeFilter = status;
+		disputesPage = 1;
+		loadDisputes();
 	}
 
 	let disputesLoaded = false;
@@ -1457,6 +1598,20 @@
 	let disputeActionBusy = $state(false);
 	let disputeNotes = $state('');
 
+	// The evidence fetch and every mutation response (assign/investigate/resolve/reject)
+	// return the dispute without the players join the paginated list has — fill the name
+	// back in from whatever's already known, same pattern as withKnownPlayerName above.
+	function withKnownDisputePlayerName(d: DisputeItem): DisputeItem {
+		if (d.playerName) return d;
+		const known =
+			viewingDisputeEvidence?.dispute.userId === d.userId
+				? viewingDisputeEvidence.dispute
+				: disputes.find((x) => x.id === d.id);
+		const playerName = known?.playerName || playerNameFor(d.userId);
+		const playerPhone = d.playerPhone || known?.playerPhone || '';
+		return { ...d, playerName, playerPhone };
+	}
+
 	async function openDispute(id: string) {
 		viewingDisputeId = id;
 		viewingDisputeEvidence = null;
@@ -1464,7 +1619,11 @@
 		disputeNotes = '';
 		disputeDetailLoading = true;
 		try {
-			viewingDisputeEvidence = await fetchDisputeEvidence(id);
+			const evidence = await fetchDisputeEvidence(id);
+			viewingDisputeEvidence = {
+				...evidence,
+				dispute: withKnownDisputePlayerName(evidence.dispute)
+			};
 		} catch (err) {
 			disputeActionError = err instanceof Error ? err.message : 'Failed to load dispute.';
 		} finally {
@@ -1477,10 +1636,13 @@
 	}
 
 	function applyDisputeUpdate(updated: DisputeItem) {
+		updated = withKnownDisputePlayerName(updated);
 		if (viewingDisputeEvidence) {
 			viewingDisputeEvidence = { ...viewingDisputeEvidence, dispute: updated };
 		}
-		disputes = disputes.map((d) => (d.id === updated.id ? updated : d));
+		disputes = disputes.map((d) =>
+			d.id === updated.id ? { ...updated, playerName: d.playerName, playerPhone: d.playerPhone } : d
+		);
 	}
 
 	async function assignDisputeAction() {
@@ -1578,6 +1740,9 @@
 	let kycLoading = $state(false);
 	let kycError = $state('');
 	let kycStatusFilter = $state('pending');
+	let kycPage = $state(1);
+	let kycTotal = $state(0);
+	let kycTotalPages = $state(1);
 
 	const kycFilterOptions = [
 		{ id: 'pending', label: 'Pending' },
@@ -1585,18 +1750,30 @@
 		{ id: 'rejected', label: 'Rejected' }
 	];
 
-	const filteredKycDocuments = $derived(kycDocuments.filter((d) => d.status === kycStatusFilter));
-
 	async function loadKycDocuments() {
 		kycLoading = true;
 		kycError = '';
 		try {
-			kycDocuments = await fetchKycDocuments();
+			const result = await fetchKycDocuments(kycPage, kycStatusFilter);
+			kycDocuments = result.items;
+			kycTotal = result.total;
+			kycTotalPages = result.totalPages;
 		} catch (err) {
 			kycError = err instanceof Error ? err.message : 'Failed to load KYC documents.';
 		} finally {
 			kycLoading = false;
 		}
+	}
+
+	function goToKycPage(page: number) {
+		kycPage = page;
+		loadKycDocuments();
+	}
+
+	function onKycFilterChange(status: string) {
+		kycStatusFilter = status;
+		kycPage = 1;
+		loadKycDocuments();
 	}
 
 	let kycLoaded = false;
@@ -1652,8 +1829,8 @@
 	let reconciliation = $state<Reconciliation | null>(null);
 	let reconciliationLoading = $state(false);
 	let reconciliationError = $state('');
-	let exportFrom = $state('');
-	let exportTo = $state('');
+	let exportFrom = $state<Date | undefined>(undefined);
+	let exportTo = $state<Date | undefined>(undefined);
 	let exportBusy = $state(false);
 	let exportError = $state('');
 
@@ -1683,8 +1860,8 @@
 		exportError = '';
 		try {
 			await downloadWalletTransactionsCSV(
-				exportFrom ? new Date(exportFrom).toISOString() : undefined,
-				exportTo ? new Date(exportTo).toISOString() : undefined
+				exportFrom ? exportFrom.toISOString() : undefined,
+				exportTo ? exportTo.toISOString() : undefined
 			);
 		} catch (err) {
 			exportError = err instanceof Error ? err.message : 'Failed to export CSV.';
@@ -2173,7 +2350,7 @@
 						<h2 class="mb-4 text-sm font-semibold text-ink">Payout status</h2>
 						<DonutChart
 							segments={withdrawalStatusSegments}
-							centerValue={withdrawals.length.toString()}
+							centerValue={totalWithdrawalRequests.toString()}
 							centerLabel="requests"
 						/>
 					</div>
@@ -2498,34 +2675,44 @@
 					<div class="mb-4 flex flex-wrap items-end gap-3">
 						<label class="block">
 							<span class="mb-1.5 block text-sm font-medium text-ink-soft">Contest</span>
-							<select
+							<Select.Root
+								type="single"
 								value={questionEventId}
-								onchange={(e) => selectQuestionEvent(e.currentTarget.value)}
-								class="w-56 rounded-xl border border-line bg-field px-3.5 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
+								onValueChange={(v) => selectQuestionEvent(v ?? '')}
 							>
-								<option value="">Select a contest…</option>
-								{#each gameEvents as event (event.id)}
-									<option value={event.id}>{event.name} — {formatEventDate(event.eventDate)}</option
-									>
-								{/each}
-							</select>
+								<Select.Trigger class="w-56">
+									{questionEventId ? eventPickerLabel(questionEventId) : 'Select a contest…'}
+								</Select.Trigger>
+								<Select.Content>
+									{#each gameEvents as event (event.id)}
+										<Select.Item value={event.id} label={eventPickerLabel(event.id)} />
+									{/each}
+								</Select.Content>
+							</Select.Root>
 						</label>
 
 						<label class="block">
 							<span class="mb-1.5 block text-sm font-medium text-ink-soft">Session</span>
-							<select
+							<Select.Root
+								type="single"
 								value={questionSessionId}
 								disabled={!questionEventId}
-								onchange={(e) => selectQuestionSession(e.currentTarget.value)}
-								class="w-56 rounded-xl border border-line bg-field px-3.5 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none disabled:opacity-50"
+								onValueChange={(v) => selectQuestionSession(v ?? '')}
 							>
-								<option value="">Select a session…</option>
-								{#each questionEventSessions as session (session.id)}
-									<option value={session.id}
-										>{session.sessionLabel} ({session.entriesCount} players)</option
-									>
-								{/each}
-							</select>
+								<Select.Trigger class="w-56">
+									{questionSessionId
+										? sessionPickerLabel(questionEventSessions, questionSessionId)
+										: 'Select a session…'}
+								</Select.Trigger>
+								<Select.Content>
+									{#each questionEventSessions as session (session.id)}
+										<Select.Item
+											value={session.id}
+											label={sessionPickerLabel(questionEventSessions, session.id)}
+										/>
+									{/each}
+								</Select.Content>
+							</Select.Root>
 						</label>
 
 						{#if questionSessionId}
@@ -2631,6 +2818,7 @@
 					<input
 						type="search"
 						bind:value={playerQuery}
+						oninput={onPlayerQueryInput}
 						placeholder="Search players…"
 						class="w-full max-w-xs rounded-xl border border-line bg-field px-3.5 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
 					/>
@@ -2669,7 +2857,7 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each filteredPlayers as player (player.id)}
+							{#each players as player (player.id)}
 								<tr class="border-b border-line last:border-0">
 									<td class="px-4 py-3">
 										<p class="font-medium text-ink">{player.name}</p>
@@ -2736,6 +2924,12 @@
 						</tbody>
 					</table>
 				</div>
+				<Pagination
+					page={playersPage}
+					totalPages={playersTotalPages}
+					total={playersTotal}
+					onChange={goToPlayersPage}
+				/>
 			{:else if activeSection === 'payouts'}
 				{#if !canSeePayouts}
 					<div
@@ -2746,7 +2940,7 @@
 				{:else}
 					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 						<StatCard label="Pending amount" value={formatINR(pendingWithdrawalAmount)} />
-						<StatCard label="Pending requests" value={pendingWithdrawals.length.toString()} />
+						<StatCard label="Pending requests" value={pendingWithdrawalCount.toString()} />
 						<StatCard label="Paid out" value={formatINR(paidOutAmount)} />
 						<StatCard label="Failed / rejected" value={failedOrRejectedCount.toString()} />
 					</div>
@@ -2755,10 +2949,15 @@
 						<input
 							type="search"
 							bind:value={payoutQuery}
+							oninput={onPayoutQueryInput}
 							placeholder="Search by player or phone…"
 							class="w-full max-w-xs rounded-xl border border-line bg-field px-3.5 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
 						/>
-						<PillTabs options={payoutFilterOptions} bind:value={payoutFilter} />
+						<PillTabs
+							options={payoutFilterOptions}
+							bind:value={payoutFilter}
+							onChange={onPayoutFilterChange}
+						/>
 					</div>
 
 					{#if withdrawalsError}
@@ -2783,7 +2982,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredWithdrawals as payout (payout.id)}
+								{#each withdrawals as payout (payout.id)}
 									<tr class="border-b border-line align-top last:border-0">
 										<td class="px-4 py-3">
 											<p class="font-medium text-ink">{payout.playerName}</p>
@@ -2857,6 +3056,12 @@
 							</tbody>
 						</table>
 					</div>
+					<Pagination
+						page={payoutsPage}
+						totalPages={payoutsTotalPages}
+						total={payoutsTotal}
+						onChange={goToPayoutsPage}
+					/>
 				{/if}
 			{:else if activeSection === 'tickets'}
 				{#if !canSeeTickets}
@@ -2870,10 +3075,15 @@
 						<input
 							type="search"
 							bind:value={ticketQuery}
+							oninput={onTicketQueryInput}
 							placeholder="Search by subject or player…"
 							class="w-full max-w-xs rounded-xl border border-line bg-field px-3.5 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
 						/>
-						<PillTabs options={ticketFilterOptions} bind:value={ticketFilter} />
+						<PillTabs
+							options={ticketFilterOptions}
+							bind:value={ticketFilter}
+							onChange={onTicketFilterChange}
+						/>
 					</div>
 
 					{#if ticketsError}
@@ -2898,12 +3108,12 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredTickets as ticket (ticket.id)}
+								{#each tickets as ticket (ticket.id)}
 									<tr
 										class="cursor-pointer border-b border-line last:border-0 hover:bg-field"
 										onclick={() => openTicket(ticket.id)}
 									>
-										<td class="px-4 py-3 font-medium text-ink">{playerNameFor(ticket.userId)}</td>
+										<td class="px-4 py-3 font-medium text-ink">{ticket.playerName}</td>
 										<td class="px-4 py-3 text-ink">{ticket.subject}</td>
 										<td class="px-4 py-3 text-ink-soft"
 											>{TICKET_CATEGORY_LABELS[ticket.category]}</td
@@ -2934,6 +3144,12 @@
 							</tbody>
 						</table>
 					</div>
+					<Pagination
+						page={ticketsPage}
+						totalPages={ticketsTotalPages}
+						total={ticketsTotal}
+						onChange={goToTicketsPage}
+					/>
 				{/if}
 			{:else if activeSection === 'disputes'}
 				{#if !canSeeDisputes}
@@ -2953,7 +3169,11 @@
 					{/if}
 
 					<div class="mb-4">
-						<PillTabs options={disputeFilterOptions} bind:value={disputeFilter} />
+						<PillTabs
+							options={disputeFilterOptions}
+							bind:value={disputeFilter}
+							onChange={onDisputeFilterChange}
+						/>
 					</div>
 
 					<div class="overflow-x-auto rounded-card border border-line bg-surface">
@@ -2967,12 +3187,12 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredDisputes as dispute (dispute.id)}
+								{#each disputes as dispute (dispute.id)}
 									<tr
 										class="cursor-pointer border-b border-line last:border-0 hover:bg-field"
 										onclick={() => openDispute(dispute.id)}
 									>
-										<td class="px-4 py-3 font-medium text-ink">{playerNameFor(dispute.userId)}</td>
+										<td class="px-4 py-3 font-medium text-ink">{dispute.playerName}</td>
 										<td class="max-w-md truncate px-4 py-3 text-ink">{dispute.description}</td>
 										<td class="px-4 py-3">
 											<Chip
@@ -2993,6 +3213,12 @@
 							</tbody>
 						</table>
 					</div>
+					<Pagination
+						page={disputesPage}
+						totalPages={disputesTotalPages}
+						total={disputesTotal}
+						onChange={goToDisputesPage}
+					/>
 				{/if}
 			{:else if activeSection === 'session-monitor'}
 				{#if !canSeeSessionMonitor}
@@ -3005,32 +3231,42 @@
 					<div class="mb-4 flex flex-wrap items-end gap-3">
 						<label class="block">
 							<span class="mb-1.5 block text-sm font-medium text-ink-soft">Contest</span>
-							<select
+							<Select.Root
+								type="single"
 								value={monitorEventId}
-								onchange={(e) => selectMonitorEvent(e.currentTarget.value)}
-								class="w-56 rounded-xl border border-line bg-field px-3.5 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
+								onValueChange={(v) => selectMonitorEvent(v ?? '')}
 							>
-								<option value="">Select a contest…</option>
-								{#each gameEvents as event (event.id)}
-									<option value={event.id}>{event.name} — {formatEventDate(event.eventDate)}</option
-									>
-								{/each}
-							</select>
+								<Select.Trigger class="w-56">
+									{monitorEventId ? eventPickerLabel(monitorEventId) : 'Select a contest…'}
+								</Select.Trigger>
+								<Select.Content>
+									{#each gameEvents as event (event.id)}
+										<Select.Item value={event.id} label={eventPickerLabel(event.id)} />
+									{/each}
+								</Select.Content>
+							</Select.Root>
 						</label>
 
 						<label class="block">
 							<span class="mb-1.5 block text-sm font-medium text-ink-soft">Session</span>
-							<select
+							<Select.Root
+								type="single"
 								value={monitorSessionId}
 								disabled={!monitorEventId}
-								onchange={(e) => selectMonitorSession(e.currentTarget.value)}
-								class="w-56 rounded-xl border border-line bg-field px-3.5 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none disabled:opacity-50"
+								onValueChange={(v) => selectMonitorSession(v ?? '')}
 							>
-								<option value="">Select a session…</option>
-								{#each monitorEventSessions as session (session.id)}
-									<option value={session.id}>{session.sessionLabel}</option>
-								{/each}
-							</select>
+								<Select.Trigger class="w-56">
+									{monitorSessionId
+										? (monitorEventSessions.find((s) => s.id === monitorSessionId)?.sessionLabel ??
+											'')
+										: 'Select a session…'}
+								</Select.Trigger>
+								<Select.Content>
+									{#each monitorEventSessions as session (session.id)}
+										<Select.Item value={session.id} label={session.sessionLabel} />
+									{/each}
+								</Select.Content>
+							</Select.Root>
 						</label>
 					</div>
 
@@ -3130,7 +3366,11 @@
 					{/if}
 
 					<div class="mb-4">
-						<PillTabs options={kycFilterOptions} bind:value={kycStatusFilter} />
+						<PillTabs
+							options={kycFilterOptions}
+							bind:value={kycStatusFilter}
+							onChange={onKycFilterChange}
+						/>
 					</div>
 
 					<div class="overflow-x-auto rounded-card border border-line bg-surface">
@@ -3145,7 +3385,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredKycDocuments as doc (doc.id)}
+								{#each kycDocuments as doc (doc.id)}
 									<tr class="border-b border-line align-top last:border-0">
 										<td class="px-4 py-3 font-medium text-ink">{doc.playerName}</td>
 										<td class="px-4 py-3 text-ink-soft">
@@ -3199,6 +3439,12 @@
 							</tbody>
 						</table>
 					</div>
+					<Pagination
+						page={kycPage}
+						totalPages={kycTotalPages}
+						total={kycTotal}
+						onChange={goToKycPage}
+					/>
 				{/if}
 			{:else if activeSection === 'reports'}
 				{#if !canSeeReports}
@@ -3259,19 +3505,11 @@
 						<form class="flex flex-wrap items-end gap-3" onsubmit={exportCSV}>
 							<label class="block">
 								<span class="mb-1.5 block text-sm font-medium text-ink-soft">From</span>
-								<input
-									type="date"
-									bind:value={exportFrom}
-									class="rounded-xl border border-line bg-field px-3.5 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-								/>
+								<DatePicker bind:value={exportFrom} class="w-44" />
 							</label>
 							<label class="block">
 								<span class="mb-1.5 block text-sm font-medium text-ink-soft">To</span>
-								<input
-									type="date"
-									bind:value={exportTo}
-									class="rounded-xl border border-line bg-field px-3.5 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-								/>
+								<DatePicker bind:value={exportTo} class="w-44" />
 							</label>
 							<button
 								type="submit"
@@ -3404,16 +3642,21 @@
 									<tr class="border-b border-line align-top last:border-0">
 										<td class="px-4 py-3 font-medium text-ink">{admin.email}</td>
 										<td class="px-4 py-3">
-											<select
+											<Select.Root
+												type="single"
 												value={admin.role}
 												disabled={isSelf || adminActionBusy === admin.id}
-												onchange={(e) => changeAdminRole(admin, e.currentTarget.value as AdminRole)}
-												class="rounded-lg border border-line bg-field px-2.5 py-1.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none disabled:opacity-50"
+												onValueChange={(v) => v && changeAdminRole(admin, v as AdminRole)}
 											>
-												{#each adminRoleOrder as role (role)}
-													<option value={role}>{ADMIN_ROLE_INFO[role].label}</option>
-												{/each}
-											</select>
+												<Select.Trigger class="w-full" size="sm">
+													{ADMIN_ROLE_INFO[admin.role].label}
+												</Select.Trigger>
+												<Select.Content>
+													{#each adminRoleOrder as role (role)}
+														<Select.Item value={role} label={ADMIN_ROLE_INFO[role].label} />
+													{/each}
+												</Select.Content>
+											</Select.Root>
 										</td>
 										<td class="px-4 py-3">
 											{#if admin.isActive}
@@ -3638,50 +3881,25 @@
 
 			<label class="block">
 				<span class="mb-1.5 block text-sm font-medium text-ink-soft">Event date</span>
-				<input
-					required
-					type="date"
-					bind:value={newEventDate}
-					class="w-full rounded-xl border border-line bg-field px-3.5 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-				/>
+				<DatePicker bind:value={newEventDate} class="w-full" />
 			</label>
 
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block">
 					<span class="mb-1.5 block text-sm font-medium text-ink-soft">Entry opens</span>
-					<input
-						required
-						type="datetime-local"
-						bind:value={newEntryOpensAt}
-						class="w-full rounded-xl border border-line bg-field px-3 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-					/>
+					<DatePicker bind:value={newEntryOpensAt} showTime class="w-full" />
 				</label>
 				<label class="block">
 					<span class="mb-1.5 block text-sm font-medium text-ink-soft">Entry closes</span>
-					<input
-						required
-						type="datetime-local"
-						bind:value={newEntryClosesAt}
-						class="w-full rounded-xl border border-line bg-field px-3 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-					/>
+					<DatePicker bind:value={newEntryClosesAt} showTime class="w-full" />
 				</label>
 				<label class="block">
 					<span class="mb-1.5 block text-sm font-medium text-ink-soft">Play starts</span>
-					<input
-						required
-						type="datetime-local"
-						bind:value={newGameStartsAt}
-						class="w-full rounded-xl border border-line bg-field px-3 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-					/>
+					<DatePicker bind:value={newGameStartsAt} showTime class="w-full" />
 				</label>
 				<label class="block">
 					<span class="mb-1.5 block text-sm font-medium text-ink-soft">Play ends</span>
-					<input
-						required
-						type="datetime-local"
-						bind:value={newGameEndsAt}
-						class="w-full rounded-xl border border-line bg-field px-3 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-					/>
+					<DatePicker bind:value={newGameEndsAt} showTime class="w-full" />
 				</label>
 			</div>
 
@@ -3722,39 +3940,19 @@
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block">
 					<span class="mb-1.5 block text-sm font-medium text-ink-soft">Entry opens</span>
-					<input
-						required
-						type="datetime-local"
-						bind:value={editEntryOpensAt}
-						class="w-full rounded-xl border border-line bg-field px-3 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-					/>
+					<DatePicker bind:value={editEntryOpensAt} showTime class="w-full" />
 				</label>
 				<label class="block">
 					<span class="mb-1.5 block text-sm font-medium text-ink-soft">Entry closes</span>
-					<input
-						required
-						type="datetime-local"
-						bind:value={editEntryClosesAt}
-						class="w-full rounded-xl border border-line bg-field px-3 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-					/>
+					<DatePicker bind:value={editEntryClosesAt} showTime class="w-full" />
 				</label>
 				<label class="block">
 					<span class="mb-1.5 block text-sm font-medium text-ink-soft">Play starts</span>
-					<input
-						required
-						type="datetime-local"
-						bind:value={editGameStartsAt}
-						class="w-full rounded-xl border border-line bg-field px-3 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-					/>
+					<DatePicker bind:value={editGameStartsAt} showTime class="w-full" />
 				</label>
 				<label class="block">
 					<span class="mb-1.5 block text-sm font-medium text-ink-soft">Play ends</span>
-					<input
-						required
-						type="datetime-local"
-						bind:value={editGameEndsAt}
-						class="w-full rounded-xl border border-line bg-field px-3 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
-					/>
+					<DatePicker bind:value={editGameEndsAt} showTime class="w-full" />
 				</label>
 			</div>
 
@@ -4042,14 +4240,20 @@
 
 			<label class="block">
 				<span class="mb-1.5 block text-sm font-medium text-ink-soft">Role</span>
-				<select
-					bind:value={newAdminRole}
-					class="w-full rounded-xl border border-line bg-field px-3.5 py-2.5 text-sm text-ink focus:border-transparent focus:ring-2 focus:ring-primary-light focus:outline-none"
+				<Select.Root
+					type="single"
+					value={newAdminRole}
+					onValueChange={(v) => v && (newAdminRole = v as AdminRole)}
 				>
-					{#each adminRoleOrder as role (role)}
-						<option value={role}>{ADMIN_ROLE_INFO[role].label}</option>
-					{/each}
-				</select>
+					<Select.Trigger class="w-full">
+						{ADMIN_ROLE_INFO[newAdminRole].label}
+					</Select.Trigger>
+					<Select.Content>
+						{#each adminRoleOrder as role (role)}
+							<Select.Item value={role} label={ADMIN_ROLE_INFO[role].label} />
+						{/each}
+					</Select.Content>
+				</Select.Root>
 			</label>
 
 			{#if addAdminError}
@@ -4239,7 +4443,7 @@
 					bg={TICKET_PRIORITY_INFO[t.priority].bg}
 				/>
 				<span class="text-xs text-ink-soft">{TICKET_CATEGORY_LABELS[t.category]}</span>
-				<span class="text-xs text-ink-faint">· {playerNameFor(t.userId)}</span>
+				<span class="text-xs text-ink-faint">· {t.playerName}</span>
 			</div>
 
 			{#if ticketActionError}
@@ -4288,7 +4492,7 @@
 					<div class="flex flex-col" class:items-end={isAdmin}>
 						<span class="mb-1 text-xs text-ink-faint">
 							{msg.senderType === 'user'
-								? playerNameFor(t.userId)
+								? t.playerName
 								: msg.senderType === 'admin'
 									? 'Support'
 									: 'System'}
@@ -4349,7 +4553,7 @@
 					color={DISPUTE_STATUS_INFO[d.status].color}
 					bg={DISPUTE_STATUS_INFO[d.status].bg}
 				/>
-				<span class="text-xs text-ink-faint">· {playerNameFor(d.userId)}</span>
+				<span class="text-xs text-ink-faint">· {d.playerName}</span>
 			</div>
 
 			<p class="mb-4 text-sm text-ink">{d.description}</p>
