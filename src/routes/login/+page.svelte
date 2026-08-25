@@ -42,7 +42,7 @@
 	// on mount.
 	$effect(() => {
 		if (!auth.initializing && auth.isAuthenticated) {
-			goto(resolve('/management'), { replaceState: true });
+			goto(resolve('/management/dashboard'), { replaceState: true });
 		}
 	});
 
@@ -52,7 +52,7 @@
 		loading = true;
 		try {
 			await auth.login(email, password);
-			goto(resolve('/management'));
+			goto(resolve('/management/dashboard'));
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
 		} finally {
