@@ -78,7 +78,9 @@
 				onValueChange={(v) => selectMonitorEvent(v ?? '')}
 			>
 				<Select.Trigger class="w-56">
-					{monitorEventId ? eventPickerLabel(monitorEventId) : 'Select a contest…'}
+					<span class="min-w-0 flex-1 truncate text-left">
+						{monitorEventId ? eventPickerLabel(monitorEventId) : 'Select a contest…'}
+					</span>
 				</Select.Trigger>
 				<Select.Content>
 					{#each gameEventsStore.gameEvents as event (event.id)}
@@ -97,9 +99,11 @@
 				onValueChange={(v) => selectMonitorSession(v ?? '')}
 			>
 				<Select.Trigger class="w-56">
-					{monitorSessionId
-						? (monitorEventSessions.find((s) => s.id === monitorSessionId)?.sessionLabel ?? '')
-						: 'Select a session…'}
+					<span class="min-w-0 flex-1 truncate text-left">
+						{monitorSessionId
+							? (monitorEventSessions.find((s) => s.id === monitorSessionId)?.sessionLabel ?? '')
+							: 'Select a session…'}
+					</span>
 				</Select.Trigger>
 				<Select.Content>
 					{#each monitorEventSessions as session (session.id)}

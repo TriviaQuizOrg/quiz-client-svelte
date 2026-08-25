@@ -128,7 +128,9 @@
 				onValueChange={(v) => selectQuestionEvent(v ?? '')}
 			>
 				<Select.Trigger class="w-56">
-					{questionEventId ? eventPickerLabel(questionEventId) : 'Select a contest…'}
+					<span class="min-w-0 flex-1 truncate text-left">
+						{questionEventId ? eventPickerLabel(questionEventId) : 'Select a contest…'}
+					</span>
 				</Select.Trigger>
 				<Select.Content>
 					{#each gameEventsStore.gameEvents as event (event.id)}
@@ -147,9 +149,11 @@
 				onValueChange={(v) => selectQuestionSession(v ?? '')}
 			>
 				<Select.Trigger class="w-56">
-					{questionSessionId
-						? sessionPickerLabel(questionEventSessions, questionSessionId)
-						: 'Select a session…'}
+					<span class="min-w-0 flex-1 truncate text-left">
+						{questionSessionId
+							? sessionPickerLabel(questionEventSessions, questionSessionId)
+							: 'Select a session…'}
+					</span>
 				</Select.Trigger>
 				<Select.Content>
 					{#each questionEventSessions as session (session.id)}
